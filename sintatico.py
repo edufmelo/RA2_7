@@ -7,27 +7,371 @@ Integrantes do grupo (ordem alfabética):
 - Nome do grupo no Canvas: RA2 7
 """
 import sys
+import io
+
+# Força saída UTF-8 no console do Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Importamos o analisador da Fase 1 para ler o arquivo e extrair os tokens.
 # Renomeamos de "analisador.py" para "lexico.py" para evitar confusão com o de análise sintática.
 from lexico import Token, lerArquivo, parseExpressao, salvarArquivo
 
+def construirGramatica():
+    """
+    Define as regras de produção da linguagem RPN em formato LL(1).
+    Retorna um dicionário com gramática, FIRST, FOLLOW e tabela LL(1).
+    """
+
+    # Regras de produção: { nao_terminal: [[producao1], [producao2], ...] }
+    regras_producao = {
+        "programa": [
+            ["comando_lista"]
+        ],
+        "comando_lista": [
+            ["comando", "comando_lista"],
+            ["ε"]
+        ],
+        "comando": [
+            ["ABRE_PAREN", "conteudo_comando", "FECHA_PAREN"]
+        ],
+        "conteudo_comando": [
+            ["KEYWORD_START"],
+            ["KEYWORD_END"],
+            ["NUMERO", "sufixo_numero"],
+            ["MEMORIA", "sufixo_memoria"],
+            ["comando", "sufixo_comando"]
+        ],
+        "sufixo_numero": [
+            ["KEYWORD_RES"],
+            ["NUMERO", "operador_final"],
+            ["MEMORIA", "apos_mem"],
+            ["comando", "operador_final"]
+        ],
+        "sufixo_memoria": [
+            ["NUMERO", "operador_final"],
+            ["MEMORIA", "apos_mem"],
+            ["comando", "operador_final"],
+            ["ε"]
+        ],
+        "sufixo_comando": [
+            ["NUMERO", "operador_final"],
+            ["MEMORIA", "apos_mem"],
+            ["comando", "apos_cmd"],
+            ["ε"]
+        ],
+        "operador_final": [
+            ["OPERADOR"],
+            ["OPERADOR_REL"]
+        ],
+        "apos_mem": [
+            ["OPERADOR"],
+            ["OPERADOR_REL"],
+            ["ε"]
+        ],
+        "apos_cmd": [
+            ["OPERADOR"],
+            ["OPERADOR_REL"],
+            ["KEYWORD_WHILE"],
+            ["comando", "KEYWORD_IF"]
+        ]
+    }
+
+    # Lista de todos os terminais reconhecidos pelo léxico
+    lista_terminais = [
+        "ABRE_PAREN", "FECHA_PAREN", "NUMERO", "OPERADOR",
+        "OPERADOR_REL", "MEMORIA", "KEYWORD_START", "KEYWORD_END",
+        "KEYWORD_RES", "KEYWORD_IF", "KEYWORD_WHILE", "$"
+    ]
+
+    # Calcula FIRST, FOLLOW e tabela LL(1)
+    conjuntos_first = calcularFirst(regras_producao, lista_terminais)
+    conjuntos_follow = calcularFollow(regras_producao, conjuntos_first, lista_terminais)
+    tabela_ll1 = construirTabelaLL1(regras_producao, conjuntos_first, conjuntos_follow, lista_terminais)
+
+    # Valida ausência de conflitos
+    eh_valida = validarGramaticaLL1(tabela_ll1)
+
+    resultado_gramatica = {
+        "gramatica": regras_producao,
+        "terminais": lista_terminais,
+        "first": conjuntos_first,
+        "follow": conjuntos_follow,
+        "tabela_ll1": tabela_ll1,
+        "eh_valida": eh_valida
+    }
+
+    return resultado_gramatica
+
+
+def calcularFirst(regras_producao, lista_terminais):
+    """
+    Calcula os conjuntos FIRST para cada não-terminal usando algoritmo de ponto fixo.
+    """
+    conjuntos_first = {}
+
+    # Inicializa conjuntos FIRST vazios para cada não-terminal
+    for nao_terminal in regras_producao:
+        conjuntos_first[nao_terminal] = set()
+
+    # Algoritmo de ponto fixo: repete até não haver mudanças
+    houve_mudanca = True
+    while houve_mudanca:
+        houve_mudanca = False
+
+        for nao_terminal in regras_producao:
+            for producao in regras_producao[nao_terminal]:
+                # Calcula FIRST da produção e adiciona ao não-terminal
+                first_da_producao = calcularFirstDeProducao(producao, conjuntos_first, lista_terminais)
+
+                tamanho_anterior = len(conjuntos_first[nao_terminal])
+                conjuntos_first[nao_terminal] = conjuntos_first[nao_terminal].union(first_da_producao)
+
+                if len(conjuntos_first[nao_terminal]) > tamanho_anterior:
+                    houve_mudanca = True
+
+    return conjuntos_first
+
+
+def calcularFirstDeProducao(producao, conjuntos_first, lista_terminais):
+    """
+    Calcula o conjunto FIRST de uma sequência de símbolos (produção).
+    """
+    resultado_first = set()
+
+    # Produção vazia
+    if producao == ["ε"]:
+        resultado_first.add("ε")
+        return resultado_first
+
+    for simbolo in producao:
+        # Se é terminal, adiciona e para
+        if simbolo in lista_terminais or simbolo == "ε":
+            resultado_first.add(simbolo)
+            break
+
+        # Se é não-terminal, adiciona FIRST dele (sem ε)
+        if simbolo in conjuntos_first:
+            resultado_first = resultado_first.union(conjuntos_first[simbolo] - {"ε"})
+
+            # Se ε não está em FIRST do símbolo, para aqui
+            if "ε" not in conjuntos_first[simbolo]:
+                break
+        else:
+            # Símbolo desconhecido tratado como terminal
+            resultado_first.add(simbolo)
+            break
+    else:
+        # Todos os símbolos podem derivar ε
+        resultado_first.add("ε")
+
+    return resultado_first
+
+
+def calcularFollow(regras_producao, conjuntos_first, lista_terminais):
+    """
+    Calcula os conjuntos FOLLOW para cada não-terminal.
+    O símbolo inicial 'programa' inclui $ no FOLLOW.
+    """
+    conjuntos_follow = {}
+
+    # Inicializa conjuntos FOLLOW vazios
+    for nao_terminal in regras_producao:
+        conjuntos_follow[nao_terminal] = set()
+
+    # Regra 1: $ pertence a FOLLOW do símbolo inicial
+    conjuntos_follow["programa"].add("$")
+
+    # Algoritmo de ponto fixo
+    houve_mudanca = True
+    while houve_mudanca:
+        houve_mudanca = False
+
+        for nao_terminal in regras_producao:
+            for producao in regras_producao[nao_terminal]:
+                if producao == ["ε"]:
+                    continue
+
+                for indice_simbolo, simbolo in enumerate(producao):
+                    # Só calcula FOLLOW para não-terminais na produção
+                    if simbolo not in regras_producao:
+                        continue
+
+                    # Pega o resto da produção após o símbolo atual
+                    resto_producao = producao[indice_simbolo + 1:]
+
+                    if resto_producao:
+                        # Regra 2: FIRST(resto) - {ε} vai para FOLLOW(simbolo)
+                        first_do_resto = calcularFirstDeProducao(resto_producao, conjuntos_first, lista_terminais)
+
+                        tamanho_anterior = len(conjuntos_follow[simbolo])
+                        conjuntos_follow[simbolo] = conjuntos_follow[simbolo].union(first_do_resto - {"ε"})
+
+                        # Regra 3: Se ε ∈ FIRST(resto), FOLLOW(nao_terminal) vai para FOLLOW(simbolo)
+                        if "ε" in first_do_resto:
+                            conjuntos_follow[simbolo] = conjuntos_follow[simbolo].union(conjuntos_follow[nao_terminal])
+
+                        if len(conjuntos_follow[simbolo]) > tamanho_anterior:
+                            houve_mudanca = True
+                    else:
+                        # Regra 3: Símbolo está no final da produção
+                        tamanho_anterior = len(conjuntos_follow[simbolo])
+                        conjuntos_follow[simbolo] = conjuntos_follow[simbolo].union(conjuntos_follow[nao_terminal])
+
+                        if len(conjuntos_follow[simbolo]) > tamanho_anterior:
+                            houve_mudanca = True
+
+    return conjuntos_follow
+
+
+def construirTabelaLL1(regras_producao, conjuntos_first, conjuntos_follow, lista_terminais):
+    """
+    Constrói a tabela de análise LL(1).
+    Retorna dicionário { (nao_terminal, terminal): producao }.
+    Se houver conflito, armazena lista de produções.
+    """
+    tabela_ll1 = {}
+
+    for nao_terminal in regras_producao:
+        for producao in regras_producao[nao_terminal]:
+            # Calcula FIRST da produção
+            first_da_producao = calcularFirstDeProducao(producao, conjuntos_first, lista_terminais)
+
+            # Para cada terminal em FIRST(produção), adiciona na tabela
+            for terminal in first_da_producao:
+                if terminal == "ε":
+                    continue
+
+                chave_tabela = (nao_terminal, terminal)
+
+                if chave_tabela in tabela_ll1:
+                    # Conflito detectado: armazena ambas as produções
+                    entrada_existente = tabela_ll1[chave_tabela]
+                    if isinstance(entrada_existente[0], list):
+                        entrada_existente.append(producao)
+                    else:
+                        tabela_ll1[chave_tabela] = [entrada_existente, producao]
+                else:
+                    tabela_ll1[chave_tabela] = producao
+
+            # Se ε ∈ FIRST(produção), para cada terminal em FOLLOW(nao_terminal)
+            if "ε" in first_da_producao:
+                for terminal_follow in conjuntos_follow.get(nao_terminal, set()):
+                    chave_tabela = (nao_terminal, terminal_follow)
+
+                    if chave_tabela in tabela_ll1:
+                        entrada_existente = tabela_ll1[chave_tabela]
+                        if isinstance(entrada_existente[0], list):
+                            entrada_existente.append(producao)
+                        else:
+                            tabela_ll1[chave_tabela] = [entrada_existente, producao]
+                    else:
+                        tabela_ll1[chave_tabela] = producao
+
+    return tabela_ll1
+
+
+def validarGramaticaLL1(tabela_ll1):
+    """
+    Verifica se a tabela LL(1) possui conflitos.
+    Retorna True se a gramática é LL(1) válida, False caso contrário.
+    """
+    conflitos_encontrados = []
+
+    for chave_tabela, producao in tabela_ll1.items():
+        # Conflito = célula com lista de listas (múltiplas produções)
+        if isinstance(producao[0], list):
+            nao_terminal, terminal = chave_tabela
+            conflito_texto = f"Conflito em M[{nao_terminal}, {terminal}]: {producao}"
+            conflitos_encontrados.append(conflito_texto)
+
+    if conflitos_encontrados:
+        print("ERRO: A gramática NÃO é LL(1). Conflitos encontrados:")
+        for conflito in conflitos_encontrados:
+            print(f"  - {conflito}")
+        return False
+
+    print("Gramática validada: é LL(1) sem conflitos.")
+    return True
+
+
+def exibirGramatica(resultado_gramatica):
+    """
+    Imprime a gramática, FIRST, FOLLOW e tabela LL(1) formatados.
+    """
+    regras_producao = resultado_gramatica["gramatica"]
+    conjuntos_first = resultado_gramatica["first"]
+    conjuntos_follow = resultado_gramatica["follow"]
+    tabela_ll1 = resultado_gramatica["tabela_ll1"]
+
+    # Exibe regras de produção
+    print("=" * 60)
+    print("REGRAS DE PRODUÇÃO")
+    print("=" * 60)
+    for nao_terminal, producoes in regras_producao.items():
+        for indice_producao, producao in enumerate(producoes):
+            separador = "::=" if indice_producao == 0 else "  |"
+            texto_producao = " ".join(producao)
+            print(f"  {nao_terminal:<20} {separador} {texto_producao}")
+    print()
+
+    # Exibe conjuntos FIRST
+    print("=" * 60)
+    print("CONJUNTOS FIRST")
+    print("=" * 60)
+    for nao_terminal in regras_producao:
+        elementos_ordenados = sorted(conjuntos_first[nao_terminal])
+        texto_first = "{ " + ", ".join(elementos_ordenados) + " }"
+        print(f"  FIRST({nao_terminal:<20}) = {texto_first}")
+    print()
+
+    # Exibe conjuntos FOLLOW
+    print("=" * 60)
+    print("CONJUNTOS FOLLOW")
+    print("=" * 60)
+    for nao_terminal in regras_producao:
+        elementos_ordenados = sorted(conjuntos_follow[nao_terminal])
+        texto_follow = "{ " + ", ".join(elementos_ordenados) + " }"
+        print(f"  FOLLOW({nao_terminal:<20}) = {texto_follow}")
+    print()
+
+    # Exibe tabela LL(1)
+    print("=" * 60)
+    print("TABELA DE ANÁLISE LL(1)")
+    print("=" * 60)
+    # Agrupa por não-terminal para exibir organizado
+    nao_terminais_unicos = list(regras_producao.keys())
+    for nao_terminal in nao_terminais_unicos:
+        entradas_deste_nt = []
+        for (nt_chave, terminal), producao in tabela_ll1.items():
+            if nt_chave == nao_terminal:
+                texto_producao = " ".join(producao)
+                entradas_deste_nt.append((terminal, texto_producao))
+
+        if entradas_deste_nt:
+            entradas_deste_nt.sort(key=lambda entrada: entrada[0])
+            for terminal, texto_producao in entradas_deste_nt:
+                print(f"  M[{nao_terminal:<20}, {terminal:<15}] = {texto_producao}")
+    print()
+
 def gerarTokens(linhas_brutas):
+    """
+    Gera tokens a partir das linhas brutas usando o léxico e salva em tokens.txt.
+    """
     linhas_tokens = []
 
     for linha in linhas_brutas:
         vetor_tokens = []
-        
+
         # Gera os tokens usando léxico -> armazena em vetor_tokens
         parseExpressao(linha, vetor_tokens)
-        
+
         if vetor_tokens:
             # Formata -> TIPO:VALOR
             tokens_formatados = []
             for token in vetor_tokens:
-                print(f"Token gerado: Tipo='{token.tipo}', Valor='{token.valor}'") # debug para ver os tokens gerados
                 tokens_formatados.append(f"{token.tipo}:{token.valor}")
-            
+
             # Junta com espaços e adiciona a lista de linhas de tokens
             linha_completa = " ".join(tokens_formatados)
             linhas_tokens.append(linha_completa)
@@ -36,41 +380,40 @@ def gerarTokens(linhas_brutas):
     salvarArquivo('tokens.txt', linhas_tokens)
 
 def lerTokens(nome_arquivo):
+    """
+    Lê o arquivo tokens.txt e retorna lista de listas de Token.
+    """
     lista_de_linhas = []
-    
+
     try:
-        with open(nome_arquivo, 'r') as arquivo_texto: # with -> garante que o arquivo será fechado
+        with open(nome_arquivo, 'r') as arquivo_texto:
             for linha_bruta in arquivo_texto:
                 # Validação extra (analisar necessidade depois)
                 linha_limpa = linha_bruta.strip() # remove espaços em branco (como implementado no léxico)
                 if not linha_limpa:
                     continue # pula linhas vazias
-            
+
                 tokens_da_linha = []
-                
+
                 # Divide a linha pelos espaços para pegar cada "TIPO:VALOR"
                 pedacos_de_texto = linha_limpa.split(' ')
-                
+
                 for pedaco in pedacos_de_texto:
                     # Divide entre tipo e valor usando o separador ":"
                     if ':' in pedaco:
                         tipo_extraido, valor_extraido = pedaco.split(':', 1)
-                        
                         # Cria o objeto Token (usando a classe importada do lexico.py)
                         novo_token = Token(tipo_extraido, valor_extraido)
                         tokens_da_linha.append(novo_token)
-                
+
                 if tokens_da_linha:
                     lista_de_linhas.append(tokens_da_linha)
-                    
+
         return lista_de_linhas
 
     except FileNotFoundError:
         print(f"Erro: O arquivo '{nome_arquivo}' não foi encontrado.")
         sys.exit(1)
-        
-def construirGramatica():
-    pass
 
 def parsear():
     pass
@@ -85,7 +428,7 @@ def main():
 
     # Arquivo teste passado via terminal
     arquivo_codigo_fonte = sys.argv[1]
-    
+
     linhas_brutas = []
     lerArquivo(arquivo_codigo_fonte, linhas_brutas)
 
@@ -96,11 +439,11 @@ def main():
     tokens = lerTokens(arquivo_tokens)
 
     # Testes para debug dos tokens lidos
-    print(f"Foram lidas {len(tokens)} linhas de código válidas.")
-    
-    if tokens:
-        primeiro = tokens[0][1] # pega linha 0, token 1 -> KEYWORD_START:START (tipo, valor)
-        print(f"Exemplo do 1º token da 1ª linha: [Tipo: {primeiro.tipo} | Valor: {primeiro.valor}]")
-  
+    print(f"Foram lidas {len(tokens)} linhas de código válidas.\n")
+
+    resultado_gramatica = construirGramatica()
+
+    exibirGramatica(resultado_gramatica)
+
 if __name__ == "__main__":
     main()
