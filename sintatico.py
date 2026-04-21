@@ -466,10 +466,98 @@ def parsear(linhas_de_tokens, tabela_ll1):
             
     fita_formatada = " ".join(textos_dos_tokens)
     print(f"-> Fita pronta: {fita_formatada}\n")
+    def acionarModoPanico(nao_terminal_afetado):
+        nonlocal indice_atual
+        if indice_atual < len(lista_tokens):
+            token_com_erro = lista_tokens[indice_atual]
+            print(f"  [Recuperação/Panic Mode] Sincronizando... Descartando token inesperado '{token_com_erro.valor}' no escopo de '{nao_terminal_afetado}'.")
+            indice_atual += 1
+
+    def derivarNaoTerminal(nome_nao_terminal):
+        nonlocal indice_atual
+        
+        # Previne acesso fora dos limites caso a fita termine inesperadamente
+        if indice_atual >= len(lista_tokens):
+            return {"nodo_pai": nome_nao_terminal, "erro": "Fim inesperado da fita de tokens"}
+            
+        token_analisado = lista_tokens[indice_atual]
+        chave_de_busca = (nome_nao_terminal, token_analisado.tipo)
+        
+        if chave_de_busca in tabela_ll1:
+            producao_encontrada = tabela_ll1[chave_de_busca]
+            
+            # A gramática sem conflito traz lista simples; prevendo fallback de formato array bidimensional
+            if len(producao_encontrada) > 0 and isinstance(producao_encontrada[0], list):
+                producao_encontrada = producao_encontrada[0] 
+                
+            nodo_arvore = {"nodo_pai": nome_nao_terminal, "producao_acionada": " ".join(producao_encontrada), "nodos_filhos": []}
+            print(f"  [Derivação] {nome_nao_terminal} -> {nodo_arvore['producao_acionada']}")
+            
+            for simbolo_producao in producao_encontrada:
+                if simbolo_producao == "ε":
+                    nodo_arvore["nodos_filhos"].append({"terminal_folha": "ε"})
+                    continue
+                    
+                # Se for um não terminal, temos uma função especifica mapeada para ele
+                if simbolo_producao in mapa_funcoes_recursivas: 
+                    funcao_recursiva_filho = mapa_funcoes_recursivas[simbolo_producao]
+                    filho_gerado_na_arvore = funcao_recursiva_filho()
+                    
+                    if filho_gerado_na_arvore:
+                        nodo_arvore["nodos_filhos"].append(filho_gerado_na_arvore)
+                else: 
+                    # Senão é Terminal, usamos a função basal para casar e extrair o limite
+                    casou_sucesso = consumirToken(simbolo_producao)
+                    if casou_sucesso:
+                        # Extrai posição - 1 pois o token acabou de ser validado e somou na fita
+                        nodo_arvore["nodos_filhos"].append({
+                            "terminal_folha": simbolo_producao, 
+                            "valor_extraido": lista_tokens[indice_atual - 1].valor
+                        })
+                    else:
+                        nodo_arvore["nodos_filhos"].append({"erro_sintatico": f"Faltou terminal esperado {simbolo_producao}"})
+                        acionarModoPanico(nome_nao_terminal)
+                        
+            return nodo_arvore
+        else:
+            print(f"  [Erro Sintático] Fluxo de regras quebrado em '{nome_nao_terminal}', elemento não aguardava o token '{token_analisado.valor}' (de perfil {token_analisado.tipo}).")
+            acionarModoPanico(nome_nao_terminal)
+            return {"erro_nodo_pai": nome_nao_terminal, "falha_registro": token_analisado.valor}
+
+    # Funções de Não-Terminais
+    def parsePrograma(): return derivarNaoTerminal("programa")
+    def parseComandoLista(): return derivarNaoTerminal("comando_lista")
+    def parseComando(): return derivarNaoTerminal("comando")
+    def parseConteudoComando(): return derivarNaoTerminal("conteudo_comando")
+    def parseSufixoNumero(): return derivarNaoTerminal("sufixo_numero")
+    def parseSufixoMemoria(): return derivarNaoTerminal("sufixo_memoria")
+    def parseSufixoComando(): return derivarNaoTerminal("sufixo_comando")
+    def parseOperadorFinal(): return derivarNaoTerminal("operador_final")
+    def parseAposMem(): return derivarNaoTerminal("apos_mem")
+    def parseAposCmd(): return derivarNaoTerminal("apos_cmd")
     
-    #falta funções recursivas
+    # Dicionário dinâmico conectando texto as funções para não quebrar a arquitetura do Clean Code replicando blocos inteiros repetitivos
+    mapa_funcoes_recursivas = {
+        "programa": parsePrograma,
+        "comando_lista": parseComandoLista,
+        "comando": parseComando,
+        "conteudo_comando": parseConteudoComando,
+        "sufixo_numero": parseSufixoNumero,
+        "sufixo_memoria": parseSufixoMemoria,
+        "sufixo_comando": parseSufixoComando,
+        "operador_final": parseOperadorFinal,
+        "apos_mem": parseAposMem,
+        "apos_cmd": parseAposCmd
+    }
+
+    # Inicialização central do orquestrador avaliativo
+    arvore_sintatica_ast = parsePrograma()
     
-    return None
+    if indice_atual < len(lista_tokens) and lista_tokens[indice_atual].tipo != "$":
+        print(f"\n  [Aviso Analítico] O parsing finalizou através da raiz mas sobraram tokens estáticos não processados na fita, a partir domedidor: {lista_tokens[indice_atual].valor}")
+    
+    print("\n=> Parsing e rastreamento recursivo concluídos com sucesso!")
+    return arvore_sintatica_ast
 
 def gerarArvore():
     pass
@@ -497,7 +585,8 @@ def main():
     resultado_gramatica = construirGramatica()
 
     exibirGramatica(resultado_gramatica)
-    
+    print("\n        INÍCIO DO PROCESSADOR SINTÁTICO DA FITA        \n")
+       
     # aciona o analisador repassando o buffer extraído e a tabela formatada do aluno 1
     arvore_sintatica = parsear(tokens, resultado_gramatica["tabela_ll1"])
 
