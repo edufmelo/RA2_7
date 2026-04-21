@@ -419,14 +419,14 @@ def parsear(linhas_de_tokens, tabela_ll1):
     """
     Inicia a análise sintática descendente recursiva usando a tabela LL(1).
     """
-    # achata a lista de listas em uma única fita sequencial
+    # Juntar a lista de listas em uma única lista
     lista_tokens = []
     
     for tokens_da_linha in linhas_de_tokens:
         for token_extraido in tokens_da_linha:
             lista_tokens.append(token_extraido)
             
-    # adiciona o token de fim de arquivo (EOF) representado por '$' na última posição
+    # Adiciona o token de fim de arquivo ($) na última posição
     token_fim = Token("$", "$")
     lista_tokens.append(token_fim)
 
@@ -435,15 +435,14 @@ def parsear(linhas_de_tokens, tabela_ll1):
     def consumirToken(tipo_esperado):
         nonlocal indice_atual
         
-        # se o indice extrapolou a fita, não podemos consumir 
+        # Se o indice extrapolou, nao podemos consumir 
         if indice_atual >= len(lista_tokens):
             return False
             
         token_analisado = lista_tokens[indice_atual]
         
-        # valida se é TIPO (ex: NUMERO) ou o VALOR exato (ex: $)
+        # Valida se é TIPO (NUMERO) ou o VALOR exato ($)
         if token_analisado.tipo == tipo_esperado or token_analisado.valor == tipo_esperado or token_analisado.tipo == f"KEYWORD_{tipo_esperado}":
-            # exibe log ao lado sinalizando pareamento correto
             print(f"  [Match] Casou limite de token: {token_analisado.valor} (referência: {tipo_esperado})")
             indice_atual += 1
             return True
@@ -454,7 +453,7 @@ def parsear(linhas_de_tokens, tabela_ll1):
     print("parsing\n")
     print(f"-> Quantidade de tokens inseridos na fita de leitura: {len(lista_tokens)}")
     
-    # string visual para exibir no terminal como feedback do array alisado
+    # (Bloco informativo, pode ser removido)
     textos_dos_tokens = []
     tipos_literais = ["OPERADOR", "OPERADOR_REL", "ABRE_PAREN", "FECHA_PAREN", "$"]
     
@@ -470,7 +469,7 @@ def parsear(linhas_de_tokens, tabela_ll1):
         nonlocal indice_atual
         if indice_atual < len(lista_tokens):
             token_com_erro = lista_tokens[indice_atual]
-            print(f"  [Recuperação/Panic Mode] Sincronizando... Descartando token inesperado '{token_com_erro.valor}' no escopo de '{nao_terminal_afetado}'.")
+            print(f"  [Recuperação] Sincronizando... Descartando token inesperado '{token_com_erro.valor}' no escopo de '{nao_terminal_afetado}'.")
             indice_atual += 1
 
     def derivarNaoTerminal(nome_nao_terminal):
@@ -486,10 +485,6 @@ def parsear(linhas_de_tokens, tabela_ll1):
         if chave_de_busca in tabela_ll1:
             producao_encontrada = tabela_ll1[chave_de_busca]
             
-            # A gramática sem conflito traz lista simples; prevendo fallback de formato array bidimensional
-            if len(producao_encontrada) > 0 and isinstance(producao_encontrada[0], list):
-                producao_encontrada = producao_encontrada[0] 
-                
             nodo_arvore = {"nodo_pai": nome_nao_terminal, "producao_acionada": " ".join(producao_encontrada), "nodos_filhos": []}
             print(f"  [Derivação] {nome_nao_terminal} -> {nodo_arvore['producao_acionada']}")
             
@@ -506,7 +501,7 @@ def parsear(linhas_de_tokens, tabela_ll1):
                     if filho_gerado_na_arvore:
                         nodo_arvore["nodos_filhos"].append(filho_gerado_na_arvore)
                 else: 
-                    # Senão é Terminal, usamos a função basal para casar e extrair o limite
+                    # Se não é terminal, usamos a função consumirToken para validar e extrair o token
                     casou_sucesso = consumirToken(simbolo_producao)
                     if casou_sucesso:
                         # Extrai posição - 1 pois o token acabou de ser validado e somou na fita
@@ -525,18 +520,28 @@ def parsear(linhas_de_tokens, tabela_ll1):
             return {"erro_nodo_pai": nome_nao_terminal, "falha_registro": token_analisado.valor}
 
     # Funções de Não-Terminais
-    def parsePrograma(): return derivarNaoTerminal("programa")
-    def parseComandoLista(): return derivarNaoTerminal("comando_lista")
-    def parseComando(): return derivarNaoTerminal("comando")
-    def parseConteudoComando(): return derivarNaoTerminal("conteudo_comando")
-    def parseSufixoNumero(): return derivarNaoTerminal("sufixo_numero")
-    def parseSufixoMemoria(): return derivarNaoTerminal("sufixo_memoria")
-    def parseSufixoComando(): return derivarNaoTerminal("sufixo_comando")
-    def parseOperadorFinal(): return derivarNaoTerminal("operador_final")
-    def parseAposMem(): return derivarNaoTerminal("apos_mem")
-    def parseAposCmd(): return derivarNaoTerminal("apos_cmd")
+    def parsePrograma(): 
+        return derivarNaoTerminal("programa")
+    def parseComandoLista(): 
+        return derivarNaoTerminal("comando_lista")
+    def parseComando(): 
+        return derivarNaoTerminal("comando")
+    def parseConteudoComando(): 
+        return derivarNaoTerminal("conteudo_comando")
+    def parseSufixoNumero(): 
+        return derivarNaoTerminal("sufixo_numero")
+    def parseSufixoMemoria(): 
+        return derivarNaoTerminal("sufixo_memoria")
+    def parseSufixoComando(): 
+        return derivarNaoTerminal("sufixo_comando")
+    def parseOperadorFinal(): 
+        return derivarNaoTerminal("operador_final")
+    def parseAposMem(): 
+        return derivarNaoTerminal("apos_mem")
+    def parseAposCmd(): 
+        return derivarNaoTerminal("apos_cmd")
     
-    # Dicionário dinâmico conectando texto as funções para não quebrar a arquitetura do Clean Code replicando blocos inteiros repetitivos
+    # Dicionário dinâmico conectando texto as funções 
     mapa_funcoes_recursivas = {
         "programa": parsePrograma,
         "comando_lista": parseComandoLista,
@@ -550,14 +555,14 @@ def parsear(linhas_de_tokens, tabela_ll1):
         "apos_cmd": parseAposCmd
     }
 
-    # Inicialização central do orquestrador avaliativo
+    # Inicialização central do parser
     arvore_sintatica_ast = parsePrograma()
     
     if indice_atual < len(lista_tokens) and lista_tokens[indice_atual].tipo != "$":
         print(f"\n  [Aviso Analítico] O parsing finalizou através da raiz mas sobraram tokens estáticos não processados na fita, a partir domedidor: {lista_tokens[indice_atual].valor}")
     
     print("\n=> Parsing e rastreamento recursivo concluídos com sucesso!")
-    return arvore_sintatica_ast
+    return arvore_sintatica_ast # retorna a AST
 
 def gerarArvore():
     pass
@@ -587,7 +592,7 @@ def main():
     exibirGramatica(resultado_gramatica)
     print("\n        INÍCIO DO PROCESSADOR SINTÁTICO DA FITA        \n")
        
-    # aciona o analisador repassando o buffer extraído e a tabela formatada do aluno 1
+    # Aciona o analisador repassando o buffer extraído e a tabela formatada
     arvore_sintatica = parsear(tokens, resultado_gramatica["tabela_ll1"])
 
 if __name__ == "__main__":

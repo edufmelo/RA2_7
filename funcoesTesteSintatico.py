@@ -6,7 +6,7 @@ Integrantes do grupo (ordem alfabética):
 
 - Nome do grupo no Canvas: RA2 7
 
-Funções de teste para o analisador sintático (Aluno 1).
+Funções de teste para o analisador sintático.
 """
 from sintatico import construirGramatica, parsear
 from lexico import parseExpressao
@@ -267,15 +267,15 @@ def testarTabelaLL1():
 def testarParsear():
     """
     Valida a execução do parser com tokens simulados de expressões.
-    Casos passados pelo professor: (3.14 2.0 +), ((A B +) (C D *) /), (A B + C)
+    Casos de teste: (3.14 2.0 +), ((A B +) (C D *) /), (A B + C)
     """
     print("\nTeste: parsear() com Recuperação de Erros (Panic Mode)\n")
     
-    # 1. Levanta a tabela mais atualizada (via Aluno 1)
+    # Constrói a gramática e obtém a tabela LL(1)
     resultado_gramatica = construirGramatica()
     tabela_ll1 = resultado_gramatica["tabela_ll1"]
     
-    # Casos de testes requisitados na especificação
+    # Lista de casos de teste com a indicação se deve gerar erro ou não
     testes = [
         {"expressao": "( 3.14 2.0 + )", "espera_erro": False},
         {"expressao": "( ( A B + ) ( C D * ) / )", "espera_erro": False},
@@ -285,7 +285,7 @@ def testarParsear():
     aprovados = 0
     reprovados = 0
     
-    # Valida se a AST devolveu propriedades de erro dentro de alguma das derivações
+    # Verifica recursivamente se a AST contém nodos com erro
     def ast_tem_erros(nodo):
         if "erro" in nodo or "erro_nodo_pai" in nodo or "erro_sintatico" in nodo:
             return True
@@ -298,23 +298,23 @@ def testarParsear():
         texto = teste["expressao"]
         vetor_tokens = []
         
-        # Emula a leitura usando o gerador lexico original 
+        # Gera os tokens da expressão usando o analisador léxico
         parseExpressao(texto, vetor_tokens)
         
-        # Envelopa em Array (fita externa) pois o parsear achata lista de multilines
+        # Coloca dentro de uma lista pois o parsear espera lista de linhas
         fita_preparada = [vetor_tokens]
         
         print(f" Testando expressão: {texto}")
-        print(" O que o log preditivo disse sobre as validações LL(1) durante a fita:")
+        print(" Log das validações LL(1) durante o parsing:")
         
-        # Roda o nosso Parser Descendente de forma encapsulada
+        # Executa o parser descendente preditivo
         ast_gerada = parsear(fita_preparada, tabela_ll1)
         
         teve_erro_real = ast_tem_erros(ast_gerada)
         status_sucesso = (teve_erro_real == teste["espera_erro"])
         
         status_text = "OK" if status_sucesso else "FALHOU"
-        detalhe_erro = " (Panic Mode comportou Erro validado com Sucesso!)" if (teste["espera_erro"] and status_sucesso) else ""
+        detalhe_erro = " (Panic Mode detectou o erro corretamente!)" if (teste["espera_erro"] and status_sucesso) else ""
         
         print(f" -> Resultado do Teste no Parser: {status_text}{detalhe_erro}\n")
         
