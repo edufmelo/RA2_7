@@ -1,16 +1,15 @@
-# Integrantes do grupo (ordem alfabética):
-# Daniel de Almeida Santos Bina - danielbina
-# Eduardo Ferreira de Melo - edufmelo
-# João Eduardo Faccin Leineker - joaooleineker
-#
-# Nome do grupo no Canvas: RA2_7
+"""
+Integrantes do grupo (ordem alfabética):
+Daniel de Almeida Santos Bina - danielbina
+Eduardo Ferreira de Melo - edufmelo
+João Eduardo Faccin Leineker - joaooleineker
+
+Nome do grupo no Canvas: RA2 7
+"""
 
 import sys
 import io
 import json
-
-class LinhaDescartada(Exception):
-    pass
 
 # Força saída UTF-8 no console do Windows
 if sys.stdout.encoding != 'utf-8':
@@ -404,17 +403,11 @@ def lerTokens(nome_arquivo):
 
                         # Validação básica de tokens
                         if tipo_extraido == "ERRO":
-                            print(f"Erro léxico na linha {numero_linha}: {valor_extraido} -> Descartando a linha inteira.\n")
-                            # Substitui a linha por uma casca vazia para acionar o pânico no parser sem quebrar a lista
-                            t1 = Token("ABRE_PAREN", "("); t1.linha = numero_linha
-                            t2 = Token("LINHA_INVALIDA", f"Erro léxico ({valor_extraido})"); t2.linha = numero_linha
-                            t3 = Token("FECHA_PAREN", ")"); t3.linha = numero_linha
-                            tokens_da_linha = [t1, t2, t3]
-                            break
+                            print(f"Erro léxico na linha {numero_linha}: {valor_extraido}\n")
+                            continue # pula este token para não quebrar o parser LL(1)
 
                         # Cria o objeto Token (usando a classe importada do lexico.py)
                         novo_token = Token(tipo_extraido, valor_extraido)
-                        novo_token.linha = numero_linha
                         tokens_da_linha.append(novo_token)
 
                 if tokens_da_linha:
@@ -431,8 +424,6 @@ def lerTokens(nome_arquivo):
 def parsear(linhas_de_tokens, tabela_ll1):
     """
     Inicia a análise sintática descendente recursiva usando a tabela LL(1).
-    Mantém uma pilha de análise explícita para controle do parsing,
-    combinada com funções recursivas para cada não-terminal.
     """
     # Juntar a lista de listas em uma única lista
     lista_tokens = []
@@ -443,19 +434,9 @@ def parsear(linhas_de_tokens, tabela_ll1):
             
     # Adiciona o token de fim de arquivo ($) na última posição
     token_fim = Token("$", "$")
-    token_fim.linha = -1 # Marcador de fim de arquivo
     lista_tokens.append(token_fim)
 
     indice_atual = 0
-
-    # Topo da pilha = último elemento da lista (índice -1)
-    # Inicializa com o marcador de final ($) e o símbolo inicial (programa)
-    pilha_analise = ["$", "programa"]
-
-    def exibirPilha():
-        """Exibe o estado atual da pilha (topo à esquerda)."""
-        conteudo = " | ".join(reversed(pilha_analise))
-        print(f"  [Pilha] topo → [ {conteudo} ] ← final")
 
     def consumirToken(tipo_esperado):
         nonlocal indice_atual
@@ -468,11 +449,7 @@ def parsear(linhas_de_tokens, tabela_ll1):
         
         # Valida se é TIPO (NUMERO) ou o VALOR exato ($)
         if token_analisado.tipo == tipo_esperado or token_analisado.valor == tipo_esperado or token_analisado.tipo == f"KEYWORD_{tipo_esperado}":
-            # Remove o terminal do topo da pilha de análise
-            if pilha_analise and pilha_analise[-1] == tipo_esperado:
-                pilha_analise.pop()
-            print(f"  [Match] Casou token: {token_analisado.valor} (referência: {tipo_esperado})")
-            exibirPilha()
+            print(f"  [Match] Casou limite de token: {token_analisado.valor} (referência: {tipo_esperado})")
             indice_atual += 1
             return True
             
@@ -493,16 +470,13 @@ def parsear(linhas_de_tokens, tabela_ll1):
             textos_dos_tokens.append(token.tipo)  
             
     fita_formatada = " ".join(textos_dos_tokens)
-    print(f"-> Fita pronta: {fita_formatada}")
-    print(f"-> Pilha inicial: [ programa | $ ]\n")
-
+    print(f"-> Fita pronta: {fita_formatada}\n")
     def acionarModoPanico(nao_terminal_afetado):
         nonlocal indice_atual
         if indice_atual < len(lista_tokens):
             token_com_erro = lista_tokens[indice_atual]
-            linha_erro = getattr(token_com_erro, 'linha', None)
-            print(f"  [Recuperação Pânico] Erro no token '{token_com_erro.valor}'. Abortando a linha {linha_erro}.")
-            raise LinhaDescartada()
+            print(f"  [Recuperação] Sincronizando... Descartando token inesperado '{token_com_erro.valor}' no escopo de '{nao_terminal_afetado}'.")
+            indice_atual += 1
 
     def derivarNaoTerminal(nome_nao_terminal):
         nonlocal indice_atual
@@ -516,19 +490,9 @@ def parsear(linhas_de_tokens, tabela_ll1):
         
         if chave_de_busca in tabela_ll1:
             producao_encontrada = tabela_ll1[chave_de_busca]
-
-            # Remove o não-terminal do topo (foi selecionado para expansão)
-            if pilha_analise and pilha_analise[-1] == nome_nao_terminal:
-                pilha_analise.pop()
-
-            # Empilha símbolos da produção em ordem REVERSA (o primeiro símbolo da produção fica no topo)
-            simbolos_para_empilhar = [s for s in producao_encontrada if s != "ε"]
-            for simbolo in reversed(simbolos_para_empilhar):
-                pilha_analise.append(simbolo)
-
+            
             nodo_arvore = {"nodo_pai": nome_nao_terminal, "producao_acionada": " ".join(producao_encontrada), "nodos_filhos": []}
             print(f"  [Derivação] {nome_nao_terminal} -> {nodo_arvore['producao_acionada']}")
-            exibirPilha()
             
             for simbolo_producao in producao_encontrada:
                 if simbolo_producao == "ε":
@@ -564,44 +528,22 @@ def parsear(linhas_de_tokens, tabela_ll1):
     # Funções de Não-Terminais
     def parsePrograma(): 
         return derivarNaoTerminal("programa")
-
     def parseComandoLista(): 
         return derivarNaoTerminal("comando_lista")
-        
     def parseComando(): 
-        nonlocal indice_atual
-        indice_inicio = indice_atual
-        try:
-            return derivarNaoTerminal("comando")
-        except LinhaDescartada:
-            # Captura a exceção no escopo do comando e pula o resto da linha
-            if indice_inicio < len(lista_tokens):
-                linha_erro = getattr(lista_tokens[indice_inicio], 'linha', -1)
-                while indice_atual < len(lista_tokens):
-                    t = lista_tokens[indice_atual]
-                    if getattr(t, 'linha', None) != linha_erro or t.tipo == "$":
-                        break
-                    indice_atual += 1
-            return {"nodo_pai": "comando_descartado", "motivo": "Erro Sintático ou Léxico na linha", "nodos_filhos": []}
-            
+        return derivarNaoTerminal("comando")
     def parseConteudoComando(): 
         return derivarNaoTerminal("conteudo_comando")
-
     def parseSufixoNumero(): 
         return derivarNaoTerminal("sufixo_numero")
-
     def parseSufixoMemoria(): 
         return derivarNaoTerminal("sufixo_memoria")
-
     def parseSufixoComando(): 
         return derivarNaoTerminal("sufixo_comando")
-
     def parseOperadorFinal(): 
         return derivarNaoTerminal("operador_final")
-
     def parseAposMem(): 
         return derivarNaoTerminal("apos_mem")
-        
     def parseAposCmd(): 
         return derivarNaoTerminal("apos_cmd")
     
@@ -622,42 +564,8 @@ def parsear(linhas_de_tokens, tabela_ll1):
     # Inicialização central do parser
     arvore_sintatica_ast = parsePrograma()
     
-    # Pós-processamento: Varre a árvore para converter comandos quebrados em nós de descarte
-    def limparArvore(no):
-        if "nodos_filhos" in no:
-            tem_erro = False
-            msg_erro = ""
-            
-            # Sub-rotina para procurar qualquer assinatura de falha nos filhos
-            def buscarErro(n):
-                nonlocal tem_erro, msg_erro
-                if "erro_sintatico" in n or "erro_nodo_pai" in n:
-                    tem_erro = True
-                    msg_erro = "Erro Sintático"
-                elif n.get("terminal_folha") == "LINHA_INVALIDA":
-                    tem_erro = True
-                    msg_erro = n.get("valor_extraido", "Erro Léxico")
-                elif "nodos_filhos" in n:
-                    for f in n["nodos_filhos"]:
-                        buscarErro(f)
-            
-            if no.get("nodo_pai") == "comando":
-                buscarErro(no)
-                if tem_erro:
-                    # Transmuta o nó comando em um nó de descarte limpo
-                    no["nodo_pai"] = "comando_descartado"
-                    no["motivo"] = msg_erro
-                    no["nodos_filhos"] = []
-                    return
-            
-            # Se não foi descartado, continua procurando mais abaixo
-            for filho in no["nodos_filhos"]:
-                limparArvore(filho)
-                
-    limparArvore(arvore_sintatica_ast)
-    
     if indice_atual < len(lista_tokens) and lista_tokens[indice_atual].tipo != "$":
-        print(f"\n  [Aviso Analítico] O parsing finalizou através da raiz mas sobraram tokens não processados na fita, a partir do medidor: {lista_tokens[indice_atual].valor}")
+        print(f"\n  [Aviso Analítico] O parsing finalizou através da raiz mas sobraram tokens estáticos não processados na fita, a partir domedidor: {lista_tokens[indice_atual].valor}")
     
     print("\n=> Parsing e rastreamento recursivo concluídos com sucesso!")
     return arvore_sintatica_ast # retorna a AST
@@ -668,10 +576,6 @@ def construirTextoArvore(no, prefixo="", eh_ultimo=True, eh_raiz=True):
     visual em texto usando caracteres de ramificação (para depois salvar no arquivo .md).
     """
     linhas = []
-
-    # Ignora totalmente nós descartados e seus filhos (linha oculta na árvore)
-    if no.get("nodo_pai") == "comando_descartado":
-        return []
 
     # Define o texto do nó lendo as chaves do parser
     if "terminal_folha" in no:
@@ -795,7 +699,7 @@ def coletarTerminais(no):
 
 def gerarAssembly(arvore, nome_arquivo):
     """
-    Percorre a árvore sintática e gera código Assembly ARMv7 (VFP)
+    Percorre a árvore sintática gerada pelo parsear() e gera código Assembly ARMv7 (VFP)
     para o ambiente Cpulator-ARMv7 DE1-SoC.
     """
 
@@ -982,21 +886,8 @@ def gerarAssembly(arvore, nome_arquivo):
             secao_texto.append(f"{label_fim}:")
             return None
 
-        # Adiciona no assembly comentários para cada comando simples
-        pedacos_expr = []
-        for t in terminais:
-            terminal_atual = t.get("terminal_folha", "")
-            if terminal_atual not in ("ε", "ABRE_PAREN", "FECHA_PAREN"):
-                valor_atual = t.get("valor_extraido", "")
-                if valor_atual != "":
-                    pedacos_expr.append(valor_atual)
-                else:
-                    pedacos_expr.append(terminal_atual)
-                    
-        expr_str = " ".join(pedacos_expr)
-        
+        # ---- Comando simples: processa terminais em ordem RPN ----
         secao_texto.append("")
-        secao_texto.append(f" @ Comando RPN: ( {expr_str} ) ")
         for terminal in terminais:
             tipo = terminal.get("terminal_folha", "")
             valor = terminal.get("valor_extraido", "")
@@ -1168,10 +1059,6 @@ def gerarAssembly(arvore, nome_arquivo):
 
             if nome == "comando":
                 processarComando(no)
-                return
-            elif nome == "comando_descartado":
-                secao_texto.append("")
-                secao_texto.append(f"    @ AVISO: Uma linha inteira foi ignorada pelo compilador. Motivo: {no.get('motivo', 'Desconhecido')}")
                 return
 
         # Se não é um comando, continua descendo na árvore
