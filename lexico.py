@@ -1,11 +1,9 @@
-"""
-Integrantes do grupo (ordem alfabética):
-Daniel de Almeida Santos Bina - danielbina
-Eduardo Ferreira de Melo - edufmelo
-João Eduardo Faccin Leineker - joaooleineker
-
-Nome do grupo no Canvas: RA2 7
-"""
+# Integrantes do grupo (ordem alfabética):
+# Daniel de Almeida Santos Bina - danielbina
+# Eduardo Ferreira de Melo - edufmelo
+# João Eduardo Faccin Leineker - joaooleineker
+#
+# Nome do grupo no Canvas: RA2_7
 
 import sys
 
