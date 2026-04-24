@@ -1,6 +1,6 @@
 # Árvore Sintática (Derivação)
 
-## Resultado do teste1.txt:
+## Resultado do .\teste1.txt:
 
 ```text
 programa

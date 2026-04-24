@@ -1,6 +1,7 @@
 # Fase 2 - Analisador Sintático *LL(1)*
 
 - **Instituição:** PUCPR
+- **Ano:** 2026 (1º Semestre)
 - **Disciplina:** Linguagens Formais e Compiladores  
 - **Professor:** Frank Coelho de Alcantara  
 - **Grupo:** RA2 7  
@@ -62,6 +63,20 @@ Executa o bloco de repetição continuamente enquanto a condição resultar em u
 - Sintaxe: ( (condição) (bloco_de_repeticao) WHILE )
 - Exemplo: ( (VAR 10.0 <) ((VAR 1.0 +) VAR) WHILE )
 
+### 3. Exemplos de Uso Geral (Matemática e Comandos)
+A linguagem opera exclusivamente em formato pós-fixado (RPN), aceitando blocos aninhados sem limite de profundidade.
+
+- Exemplo Matemático: `(15.5 4.2 +)` → *Soma 15.5 com 4.2*
+- Exemplo Matemático Aninhado: `((10 2 *) 5 +)` → *Multiplica 10 por 2, e soma o resultado com 5*
+- Alocação em Memória: `(99.9 VAR_X)` → *Salva o valor 99.9 na memória VAR_X*
+- Resgate de Histórico: `(1 RES)` → *Busca a resolução da expressão na 1ª linha de distância (resultado anterior)*
+
+## Tratamento de Erros (Modo Pânico)
+Para garantir a robustez do analisador, o projeto conta com um sistema de recuperação de erros baseado em um "Modo Pânico" (Panic Mode). 
+De forma resumida:
+- Ao identificar um **erro léxico** (token inválido) ou **erro sintático** (token inesperado na estrutura), o parser aciona a função `acionarModoPanico()`.
+- O mecanismo aborta a árvore de derivação daquele nó específico (marcanto o comando como `comando_descartado`), reporta o erro e a linha no console, e descarta o restante dos tokens até o final da instrução atual.
+- O processo é sincronizado para reiniciar a validação na próxima linha do arquivo, impedindo que a execução inteira do parser quebre por conta de um único erro isolado.
 
 ## Testes Automatizados
 Para garantir a robustez do analisador, foi desenvolvida uma bateria de testes unitários e de integração (presentes no arquivo `funcoesTesteSintatico.py`).
