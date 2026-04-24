@@ -1,14 +1,16 @@
-"""
-Integrantes do grupo (ordem alfabética):
-- Daniel de Almeida Santos Bina - @danielbina
-- Eduardo Ferreira de Melo - @edufmelo
-- João Eduardo Faccin Leineker - @joaooleineker
+# Integrantes do grupo (ordem alfabética):
+# Daniel de Almeida Santos Bina - danielbina
+# Eduardo Ferreira de Melo - edufmelo
+# João Eduardo Faccin Leineker - joaooleineker
+#
+# Nome do grupo no Canvas: RA2_7
 
-- Nome do grupo no Canvas: RA2 7
-"""
 import sys
 import io
 import json
+
+class LinhaDescartada(Exception):
+    pass
 
 # Força saída UTF-8 no console do Windows
 if sys.stdout.encoding != 'utf-8':
@@ -379,6 +381,7 @@ def lerTokens(nome_arquivo):
     Lê o arquivo tokens.txt e retorna lista de listas de Token.
     """
     lista_de_linhas = []
+    numero_linha = 1
 
     try:
         with open(nome_arquivo, 'r') as arquivo_texto:
@@ -386,6 +389,7 @@ def lerTokens(nome_arquivo):
                 # Validação extra (analisar necessidade depois)
                 linha_limpa = linha_bruta.strip() # remove espaços em branco (como implementado no léxico)
                 if not linha_limpa:
+                    numero_linha += 1
                     continue # pula linhas vazias
 
                 tokens_da_linha = []
@@ -397,12 +401,26 @@ def lerTokens(nome_arquivo):
                     # Divide entre tipo e valor usando o separador ":"
                     if ':' in pedaco:
                         tipo_extraido, valor_extraido = pedaco.split(':', 1)
+
+                        # Validação básica de tokens
+                        if tipo_extraido == "ERRO":
+                            print(f"Erro léxico na linha {numero_linha}: {valor_extraido} -> Descartando a linha inteira.\n")
+                            # Substitui a linha por uma casca vazia para acionar o pânico no parser sem quebrar a lista
+                            t1 = Token("ABRE_PAREN", "("); t1.linha = numero_linha
+                            t2 = Token("LINHA_INVALIDA", f"Erro léxico ({valor_extraido})"); t2.linha = numero_linha
+                            t3 = Token("FECHA_PAREN", ")"); t3.linha = numero_linha
+                            tokens_da_linha = [t1, t2, t3]
+                            break
+
                         # Cria o objeto Token (usando a classe importada do lexico.py)
                         novo_token = Token(tipo_extraido, valor_extraido)
+                        novo_token.linha = numero_linha
                         tokens_da_linha.append(novo_token)
 
                 if tokens_da_linha:
                     lista_de_linhas.append(tokens_da_linha)
+
+                numero_linha += 1
 
         return lista_de_linhas
 
@@ -425,6 +443,7 @@ def parsear(linhas_de_tokens, tabela_ll1):
             
     # Adiciona o token de fim de arquivo ($) na última posição
     token_fim = Token("$", "$")
+    token_fim.linha = -1 # Marcador de fim de arquivo
     lista_tokens.append(token_fim)
 
     indice_atual = 0
@@ -476,12 +495,14 @@ def parsear(linhas_de_tokens, tabela_ll1):
     fita_formatada = " ".join(textos_dos_tokens)
     print(f"-> Fita pronta: {fita_formatada}")
     print(f"-> Pilha inicial: [ programa | $ ]\n")
+
     def acionarModoPanico(nao_terminal_afetado):
         nonlocal indice_atual
         if indice_atual < len(lista_tokens):
             token_com_erro = lista_tokens[indice_atual]
-            print(f"  [Recuperação] Sincronizando... Descartando token inesperado '{token_com_erro.valor}' no escopo de '{nao_terminal_afetado}'.")
-            indice_atual += 1
+            linha_erro = getattr(token_com_erro, 'linha', None)
+            print(f"  [Recuperação Pânico] Erro no token '{token_com_erro.valor}'. Abortando a linha {linha_erro}.")
+            raise LinhaDescartada()
 
     def derivarNaoTerminal(nome_nao_terminal):
         nonlocal indice_atual
@@ -543,22 +564,44 @@ def parsear(linhas_de_tokens, tabela_ll1):
     # Funções de Não-Terminais
     def parsePrograma(): 
         return derivarNaoTerminal("programa")
+
     def parseComandoLista(): 
         return derivarNaoTerminal("comando_lista")
+        
     def parseComando(): 
-        return derivarNaoTerminal("comando")
+        nonlocal indice_atual
+        indice_inicio = indice_atual
+        try:
+            return derivarNaoTerminal("comando")
+        except LinhaDescartada:
+            # Captura a exceção no escopo do comando e pula o resto da linha
+            if indice_inicio < len(lista_tokens):
+                linha_erro = getattr(lista_tokens[indice_inicio], 'linha', -1)
+                while indice_atual < len(lista_tokens):
+                    t = lista_tokens[indice_atual]
+                    if getattr(t, 'linha', None) != linha_erro or t.tipo == "$":
+                        break
+                    indice_atual += 1
+            return {"nodo_pai": "comando_descartado", "motivo": "Erro Sintático ou Léxico na linha", "nodos_filhos": []}
+            
     def parseConteudoComando(): 
         return derivarNaoTerminal("conteudo_comando")
+
     def parseSufixoNumero(): 
         return derivarNaoTerminal("sufixo_numero")
+
     def parseSufixoMemoria(): 
         return derivarNaoTerminal("sufixo_memoria")
+
     def parseSufixoComando(): 
         return derivarNaoTerminal("sufixo_comando")
+
     def parseOperadorFinal(): 
         return derivarNaoTerminal("operador_final")
+
     def parseAposMem(): 
         return derivarNaoTerminal("apos_mem")
+        
     def parseAposCmd(): 
         return derivarNaoTerminal("apos_cmd")
     
@@ -579,6 +622,40 @@ def parsear(linhas_de_tokens, tabela_ll1):
     # Inicialização central do parser
     arvore_sintatica_ast = parsePrograma()
     
+    # Pós-processamento: Varre a árvore para converter comandos quebrados em nós de descarte
+    def limparArvore(no):
+        if "nodos_filhos" in no:
+            tem_erro = False
+            msg_erro = ""
+            
+            # Sub-rotina para procurar qualquer assinatura de falha nos filhos
+            def buscarErro(n):
+                nonlocal tem_erro, msg_erro
+                if "erro_sintatico" in n or "erro_nodo_pai" in n:
+                    tem_erro = True
+                    msg_erro = "Erro Sintático"
+                elif n.get("terminal_folha") == "LINHA_INVALIDA":
+                    tem_erro = True
+                    msg_erro = n.get("valor_extraido", "Erro Léxico")
+                elif "nodos_filhos" in n:
+                    for f in n["nodos_filhos"]:
+                        buscarErro(f)
+            
+            if no.get("nodo_pai") == "comando":
+                buscarErro(no)
+                if tem_erro:
+                    # Transmuta o nó comando em um nó de descarte limpo
+                    no["nodo_pai"] = "comando_descartado"
+                    no["motivo"] = msg_erro
+                    no["nodos_filhos"] = []
+                    return
+            
+            # Se não foi descartado, continua procurando mais abaixo
+            for filho in no["nodos_filhos"]:
+                limparArvore(filho)
+                
+    limparArvore(arvore_sintatica_ast)
+    
     if indice_atual < len(lista_tokens) and lista_tokens[indice_atual].tipo != "$":
         print(f"\n  [Aviso Analítico] O parsing finalizou através da raiz mas sobraram tokens não processados na fita, a partir do medidor: {lista_tokens[indice_atual].valor}")
     
@@ -591,6 +668,10 @@ def construirTextoArvore(no, prefixo="", eh_ultimo=True, eh_raiz=True):
     visual em texto usando caracteres de ramificação (para depois salvar no arquivo .md).
     """
     linhas = []
+
+    # Ignora totalmente nós descartados e seus filhos (linha oculta na árvore)
+    if no.get("nodo_pai") == "comando_descartado":
+        return []
 
     # Define o texto do nó lendo as chaves do parser
     if "terminal_folha" in no:
@@ -714,7 +795,7 @@ def coletarTerminais(no):
 
 def gerarAssembly(arvore, nome_arquivo):
     """
-    Percorre a árvore sintática gerada pelo parsear() e gera código Assembly ARMv7 (VFP)
+    Percorre a árvore sintática e gera código Assembly ARMv7 (VFP)
     para o ambiente Cpulator-ARMv7 DE1-SoC.
     """
 
@@ -1087,6 +1168,10 @@ def gerarAssembly(arvore, nome_arquivo):
 
             if nome == "comando":
                 processarComando(no)
+                return
+            elif nome == "comando_descartado":
+                secao_texto.append("")
+                secao_texto.append(f"    @ AVISO: Uma linha inteira foi ignorada pelo compilador. Motivo: {no.get('motivo', 'Desconhecido')}")
                 return
 
         # Se não é um comando, continua descendo na árvore

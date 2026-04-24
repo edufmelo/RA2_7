@@ -1,10 +1,9 @@
-"""
-Alunos:
-- Daniel de Almeida Santos Bina
-- Eduardo Ferreira de Melo
-- João Eduardo Faccin Leineker
-Grupo: RA1 3
-"""
+# Integrantes do grupo (ordem alfabética):
+# Daniel de Almeida Santos Bina - danielbina
+# Eduardo Ferreira de Melo - edufmelo
+# João Eduardo Faccin Leineker - joaooleineker
+#
+# Nome do grupo no Canvas: RA2_7
 
 import sys
 
@@ -67,7 +66,7 @@ def estadoNumero(linha, pos, tokens):
     if qtdePontos <= 1:
         novoToken = Token("NUMERO", textoNumero)
     else:
-        novoToken = Token("ERRO", "Numero malformado: " + textoNumero)
+        novoToken = Token("ERRO", textoNumero)
 
     tokens.append(novoToken)
 
@@ -134,7 +133,7 @@ def estadoIdentificador(linha, pos, tokens):  # keywords e memoria
     elif textoId.isupper():
         novoToken = Token("MEMORIA", textoId)
     else:
-        novoToken = Token("ERRO", "Identificador malformado (use maiusculas): " + textoId)
+        novoToken = Token("ERRO", textoId)
         
     tokens.append(novoToken)
     return pos
@@ -142,7 +141,7 @@ def estadoIdentificador(linha, pos, tokens):  # keywords e memoria
 # Numeros malformados, tokens inválidos
 def estadoErro(linha, pos, tokens):
     charInvalido = linha[pos]
-    novoToken = Token("ERRO", "Caractere invalido: " + charInvalido)
+    novoToken = Token("ERRO", charInvalido)
     tokens.append(novoToken)
 
     return pos + 1
@@ -181,13 +180,13 @@ def executarExpressao(tokens, resultados, memoria):
             elif token.valor == "*":
                 pilha.append(a * b)
 
-            elif token.valor == "/":
+            elif token.valor == "|":
                 if b == 0:
-                    print("Erro: divisao por zero")
+                    print("Erro: divisao real por zero")
                     return None
                 pilha.append(a / b)
 
-            elif token.valor == "//":
+            elif token.valor == "/":
                 if b == 0:
                     print("Erro: divisao inteira por zero")
                     return None
